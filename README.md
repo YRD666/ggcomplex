@@ -26,23 +26,21 @@ the ggplot2 grammar of graphics.
 
 ---
 
-## Installation
+## Quick Start
+
+### 1. Installation
 
 ```r
-# 1. Install ggtree from Bioconductor (required dependency)
+# Install ggtree from Bioconductor (required dependency)
 if (!requireNamespace("BiocManager", quietly = TRUE))
     install.packages("BiocManager")
 BiocManager::install("ggtree")
 
-# 2. Install ggcomplex from GitHub
+# Install ggcomplex from GitHub
 devtools::install_github("YRD666/ggcomplex")
 ```
 
----
-
-## Quick Start
-
-### Heatmap with dendrograms and annotations
+### 2. Usage
 
 ```r
 library(ggcomplex)
@@ -51,57 +49,14 @@ library(ggplot2)
 mat <- matrix(rnorm(200), nrow = 20,
               dimnames = list(paste0("Gene", 1:20), paste0("Sample", 1:10)))
 
-col_meta <- data.frame(
-  Sample = colnames(mat),
-  Group  = rep(c("Control", "Treatment"), 5)
-)
-
-row_meta <- data.frame(
-  Gene  = rownames(mat),
-  Score = runif(20, 0, 10)
-)
-
 gg_heatmap(mat, fill_palette = gc_palette("RdBu")) %>%
-  add_row_tree(dist_method = "correlation", k = 3) %>%
-  add_col_tree() %>%
-  add_col_tile(col_meta, aes(x = Sample, y = 1, fill = Group),
-               palette = gc_cat_palette("lancet", 2)) %>%
-  add_row_bar(row_meta, aes(x = Gene, y = Score),
-              fill = "steelblue", anno_title = "Score")
-```
-
-### Dot / bubble plot
-
-```r
-pmat <- matrix(runif(200, 0.001, 0.1), nrow = 20, dimnames = dimnames(mat))
-
-gg_dotplot(mat, size_mat = -log10(pmat),
-           color_palette = gc_palette("PuOr"),
-           color_label = "Z-score",
-           size_label  = "-log10(p)") %>%
-  add_row_tree() %>%
+  add_row_tree(k = 3) %>%
   add_col_tree()
 ```
 
-### Circular heatmap with chord links
+For **40+ complete runnable examples** — heatmaps, dot plots, circular heatmaps, annotations, chord diagrams, and more — see the full guide:
 
-```r
-circ_mat <- matrix(rnorm(8 * 24), 8, 24,
-                   dimnames = list(paste0("Gene", 1:8), paste0("S", 1:24)))
-
-groups <- setNames(rep(c("A", "B", "C"), c(8, 8, 8)), colnames(circ_mat))
-
-gg_circular(circ_mat,
-            fill_palette = gc_palette("RdBu"),
-            col_split = groups, split_gap = 1.5,
-            heatmap_border_color = "grey20",
-            gap_degree = 40, inner_radius = 4) %>%
-  add_circular_tree(which = "col") %>%
-  add_outer_ring(data.frame(sample = colnames(circ_mat),
-                            group = groups),
-                 col_var = "sample", fill_var = "group",
-                 geom = "tile", height = 0.6)
-```
+**[>>> ggcomplex Guide (HTML) <<<](https://htmlpreview.github.io/?https://github.com/YRD666/ggcomplex/blob/main/doc/ggcomplex-guide.html)**
 
 ---
 
@@ -235,21 +190,6 @@ ggcomplex follows an **Anchor + Satellites** design pattern:
 
 ---
 
-## Vignette
-
-A comprehensive guide with 40+ runnable examples is available:
-
-- **[Online HTML version](https://htmlpreview.github.io/?https://github.com/YRD666/ggcomplex/blob/main/doc/ggcomplex-guide.html)** — click to view directly in browser
-- **Source**: [`vignettes/ggcomplex-guide.Rmd`](vignettes/ggcomplex-guide.Rmd)
-
-After installation, view it in R:
-
-```r
-vignette("ggcomplex-guide", package = "ggcomplex")
-```
-
----
-
 ## Dependencies
 
 | Package | Source | Role |
@@ -257,7 +197,6 @@ vignette("ggcomplex-guide", package = "ggcomplex")
 | [ggplot2](https://ggplot2.tidyverse.org/) | CRAN | Core plotting engine |
 | [ggtree](https://bioconductor.org/packages/ggtree/) | Bioconductor | Dendrogram rendering |
 | [aplot](https://github.com/YuLab-SMU/aplot) | CRAN | Sub-plot alignment and composition |
-| [dplyr](https://dplyr.tidyverse.org/) | CRAN | Data manipulation |
 | [tidyr](https://tidyr.tidyverse.org/) | CRAN | Matrix → tidy conversion |
 | [rlang](https://rlang.r-lib.org/) | CRAN | Tidy evaluation |
 | [scales](https://scales.r-lib.org/) | CRAN | Colour scale utilities |
