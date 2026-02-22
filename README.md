@@ -204,7 +204,7 @@ ggcomplex follows an **Anchor + Satellites** design pattern:
 
 A comprehensive guide with 40+ runnable examples is available:
 
-- **HTML version**: [`doc/ggcomplex-guide.html`](doc/ggcomplex-guide.html) (included in this repository)
+- **[Online HTML version](https://htmlpreview.github.io/?https://github.com/YRD666/ggcomplex/blob/main/doc/ggcomplex-guide.html)** — click to view directly in browser
 - **Source**: [`vignettes/ggcomplex-guide.Rmd`](vignettes/ggcomplex-guide.Rmd)
 
 After installation, view it in R:
