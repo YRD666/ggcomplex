@@ -35,7 +35,7 @@ if (!requireNamespace("BiocManager", quietly = TRUE))
 BiocManager::install("ggtree")
 
 # 2. Install ggcomplex from GitHub
-devtools::install_github("YOUR_GITHUB_USERNAME/ggcomplex")
+devtools::install_github("YRD666/ggcomplex")
 ```
 
 ---
@@ -231,4 +231,4 @@ vignette("ggcomplex-guide", package = "ggcomplex")
 
 ## License
 
-MIT © 2026 ggcomplex authors
+MIT © 2026 Ruidong Yang

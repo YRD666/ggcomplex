@@ -82,6 +82,15 @@ display. Values outside this range are squished. \code{NULL} = auto.}
 
 \item{base_size}{Base font size for the theme.}
 
+\item{panel_border_color}{Colour for a border rectangle around the main
+plot panel. \code{NA} (default) = no border.}
+
+\item{panel_border_width}{Line width of the panel border.}
+
+\item{panel_spacing}{Global spacing (pt) between the main plot and all
+surrounding sub-plots. Individual panels can override via their \code{gap}
+argument. Defaults to 2.}
+
 \item{extra_layers}{A list of additional ggplot layers (scales, themes).}
 
 \item{...}{Additional arguments passed to \code{geom_fn()}.}

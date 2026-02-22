@@ -227,6 +227,9 @@ annotation panel. \code{NA} (default) = no border.}
 
 \item{panel_border_width}{Line width of the panel border.}
 
+\item{gap}{Override spacing (pt) between this panel and the main plot.
+\code{NULL} uses the global \code{panel_spacing} value.}
+
 \item{extra_layers}{A list of additional ggplot layers (scales, themes).}
 
 \item{...}{Additional arguments passed to the geom function.}

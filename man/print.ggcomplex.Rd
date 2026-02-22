@@ -16,5 +16,5 @@
 }
 \description{
 Assembles all registered sub-plots (trees, annotations) around the main
-heatmap using \link{aplot} and prints the result.
+heatmap using the \pkg{aplot} package and prints the result.
 }

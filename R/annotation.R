@@ -38,6 +38,8 @@
 #' @param panel_border_color Colour for a border rectangle around the
 #'   annotation panel. `NA` (default) = no border.
 #' @param panel_border_width Line width of the panel border.
+#' @param gap Override spacing (pt) between this panel and the main plot.
+#'   `NULL` uses the global `panel_spacing` value.
 #' @param extra_layers A list of additional ggplot layers (scales, themes).
 #' @param ... Additional arguments passed to the geom function.
 #'
@@ -624,7 +626,7 @@ add_col_histogram <- function(obj, anno_data, mapping, height = 0.15,
 #' @export
 #'
 #' @examples
-#' \dontrun{
+#' \donttest{
 #' mat <- matrix(rnorm(100), 10, 10,
 #'               dimnames = list(paste0("G", 1:10), paste0("S", 1:10)))
 #' meta_r <- data.frame(gene = rownames(mat), score = runif(10))
@@ -634,9 +636,11 @@ add_col_histogram <- function(obj, anno_data, mapping, height = 0.15,
 #'   geom_add("tree", side = "left", k = 3) %>%
 #'   geom_add("tree", side = "top") %>%
 #'   geom_add("bar", side = "right", data = meta_r,
-#'            mapping = aes(x = gene, y = score), fill = "steelblue") %>%
+#'            mapping = ggplot2::aes(x = gene, y = score),
+#'            fill = "steelblue") %>%
 #'   geom_add("dot", side = "top", data = meta_c,
-#'            mapping = aes(x = sample, y = quality), color = "red")
+#'            mapping = ggplot2::aes(x = sample, y = quality),
+#'            color = "red")
 #' }
 geom_add <- function(obj,
                      geom  = c("bar", "tile", "dot", "boxplot", "violin",

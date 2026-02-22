@@ -25,6 +25,8 @@
 #' @param cut_linetype Linetype for the cut line.
 #' @param show_tip_labels Logical; show leaf/tip labels on the dendrogram?
 #' @param tip_label_size Font size for tip labels.
+#' @param gap Override spacing (pt) between this panel and the main plot.
+#'   `NULL` uses the global `panel_spacing` value.
 #'
 #' @return Updated `ggcomplex` object.
 #' @export

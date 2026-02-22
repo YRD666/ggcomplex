@@ -2,12 +2,18 @@ Package: ggcomplex
 Title: Complex Composite Plots Based on ggplot2 Grammar of Graphics
 Version: 0.1.0
 Authors@R: 
-    person("Developer", "Name", email = "dev@example.com", role = c("aut", "cre"))
+    person("Ruidong", "Yang",
+           email = "yangruidong1993@163.com",
+           role = c("aut", "cre"),
+           comment = c(ORCID = ""))
 Description: A toolkit for drawing complex composite plots (heatmaps with
-    dendrograms, side annotations, and more) using the ggplot2 layer grammar.
-    It integrates ggtree for tree rendering and aplot for subplot alignment,
-    providing a pipeline-style API that is both intuitive and extensible.
+    dendrograms, side annotations, dot plots, circular heatmaps, and more)
+    using the ggplot2 layer grammar. It integrates ggtree for tree rendering
+    and aplot for subplot alignment, providing a pipeline-style API that is
+    both intuitive and extensible.
 License: MIT + file LICENSE
+URL: https://github.com/YRD666/ggcomplex
+BugReports: https://github.com/YRD666/ggcomplex/issues
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.2
@@ -17,7 +23,6 @@ Imports:
     ggplot2 (>= 3.4.0),
     ggtree,
     aplot,
-    dplyr,
     tidyr,
     tibble,
     rlang,
@@ -28,7 +33,9 @@ Imports:
 Suggests:
     testthat (>= 3.0.0),
     knitr,
-    rmarkdown
+    rmarkdown,
+    gridExtra
 Config/testthat/edition: 3
 VignetteBuilder: knitr
-biocViews:
+biocViews: Visualization, Clustering, Transcriptomics, GeneExpression,
+    DifferentialExpression

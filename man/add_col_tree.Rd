@@ -61,6 +61,9 @@ vector to colour branches by sub-tree (requires \code{k} to be set).}
 \item{show_tip_labels}{Logical; show leaf/tip labels on the dendrogram?}
 
 \item{tip_label_size}{Font size for tip labels.}
+
+\item{gap}{Override spacing (pt) between this panel and the main plot.
+\code{NULL} uses the global \code{panel_spacing} value.}
 }
 \value{
 Updated \code{ggcomplex} object.

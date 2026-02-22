@@ -6,10 +6,18 @@
 \alias{ggcomplex-package}
 \title{ggcomplex: Complex Composite Plots Based on ggplot2 Grammar of Graphics}
 \description{
-A toolkit for drawing complex composite plots (heatmaps with dendrograms, side annotations, and more) using the ggplot2 layer grammar. It integrates ggtree for tree rendering and aplot for subplot alignment, providing a pipeline-style API that is both intuitive and extensible.
+A toolkit for drawing complex composite plots (heatmaps with dendrograms, side annotations, dot plots, circular heatmaps, and more) using the ggplot2 layer grammar. It integrates ggtree for tree rendering and aplot for subplot alignment, providing a pipeline-style API that is both intuitive and extensible.
+}
+\seealso{
+Useful links:
+\itemize{
+  \item \url{https://github.com/YRD666/ggcomplex}
+  \item Report bugs at \url{https://github.com/YRD666/ggcomplex/issues}
+}
+
 }
 \author{
-\strong{Maintainer}: Developer Name \email{dev@example.com}
+\strong{Maintainer}: Ruidong Yang \email{yangruidong1993@163.com}
 
 }
 \keyword{internal}

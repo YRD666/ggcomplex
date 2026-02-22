@@ -95,7 +95,7 @@ parameters (\code{tree}, \code{order}, \code{dist_method}, \code{hclust_method},
 can be passed via \code{...}.
 }
 \examples{
-\dontrun{
+\donttest{
 mat <- matrix(rnorm(100), 10, 10,
               dimnames = list(paste0("G", 1:10), paste0("S", 1:10)))
 meta_r <- data.frame(gene = rownames(mat), score = runif(10))
@@ -105,8 +105,10 @@ gg_heatmap(mat) \%>\%
   geom_add("tree", side = "left", k = 3) \%>\%
   geom_add("tree", side = "top") \%>\%
   geom_add("bar", side = "right", data = meta_r,
-           mapping = aes(x = gene, y = score), fill = "steelblue") \%>\%
+           mapping = ggplot2::aes(x = gene, y = score),
+           fill = "steelblue") \%>\%
   geom_add("dot", side = "top", data = meta_c,
-           mapping = aes(x = sample, y = quality), color = "red")
+           mapping = ggplot2::aes(x = sample, y = quality),
+           color = "red")
 }
 }

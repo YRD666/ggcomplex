@@ -117,6 +117,11 @@ display. Values outside this range are squished. \code{NULL} = auto.}
 
 \item{base_size}{Base font size for the theme.}
 
+\item{panel_border_color}{Colour for a border rectangle around the main
+plot panel. \code{NA} (default) = no border.}
+
+\item{panel_border_width}{Line width of the panel border.}
+
 \item{row_split}{Factor or integer. Splits rows into groups separated by
 white-space gaps. If an integer, uses \code{\link[stats:cutree]{stats::cutree()}} on the row
 dendrogram (requires \code{\link[=add_row_tree]{add_row_tree()}} first). If a named factor/vector
@@ -126,6 +131,10 @@ whose names match row names, rows are grouped accordingly.}
 
 \item{split_gap}{Numeric gap width between split groups (in data units).
 Defaults to 0.8.}
+
+\item{panel_spacing}{Global spacing (pt) between the main plot and all
+surrounding sub-plots. Individual panels can override via their \code{gap}
+argument. Defaults to 2.}
 
 \item{...}{Currently unused; reserved for future extensions.}
 }

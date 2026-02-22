@@ -11,8 +11,8 @@
 #'     \item{`"col_zscore"`}{Column-wise Z-score.}
 #'     \item{`"log2"`}{\eqn{\log_2(x + 1)}.}
 #'     \item{`"log10"`}{\eqn{\log_{10}(x + 1)}.}
-#'     \item{`"minmax"`}{Row-wise min-max scaling to [0, 1].}
-#'     \item{`"col_minmax"`}{Column-wise min-max scaling to [0, 1].}
+#'     \item{`"minmax"`}{Row-wise min-max scaling to \[0, 1\].}
+#'     \item{`"col_minmax"`}{Column-wise min-max scaling to \[0, 1\].}
 #'     \item{`"center"`}{Row-wise centering (subtract the row mean).}
 #'     \item{`"col_center"`}{Column-wise centering.}
 #'   }

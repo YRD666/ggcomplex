@@ -46,6 +46,12 @@
 #' @param col_split Like `row_split` but for columns.
 #' @param split_gap Numeric gap width between split groups (in data units).
 #'   Defaults to 0.8.
+#' @param panel_border_color Colour for a border rectangle around the main
+#'   plot panel. `NA` (default) = no border.
+#' @param panel_border_width Line width of the panel border.
+#' @param panel_spacing Global spacing (pt) between the main plot and all
+#'   surrounding sub-plots. Individual panels can override via their `gap`
+#'   argument. Defaults to 2.
 #' @param ... Currently unused; reserved for future extensions.
 #'
 #' @return A `ggcomplex` S3 object.
