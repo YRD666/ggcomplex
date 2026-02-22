@@ -1,0 +1,1637 @@
+---
+title: "ggcomplex: Comprehensive Guide"
+author: "Ruidong Yang"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+    toc_float: true
+    number_sections: true
+    theme: flatly
+    highlight: tango
+    fig_width: 10
+    fig_height: 7
+vignette: >
+  %\VignetteIndexEntry{ggcomplex: Comprehensive Guide}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  collapse    = TRUE,
+  comment     = "#>",
+  fig.align   = "center",
+  fig.width   = 10,
+  fig.height  = 7,
+  warning     = FALSE,
+  message     = FALSE
+)
+```
+
+# Introduction
+
+**ggcomplex** is an R package for building complex composite figures ---
+heatmaps with dendrograms, side annotations, bubble charts, and more --- using
+a pipeline-style API built on top of *ggplot2*, *ggtree*, and *aplot*.
+
+The core workflow follows an **Anchor + Satellites** pattern:
+
+1. Create a **main plot** (`gg_heatmap`, `gg_dotplot`, or `gg_matrix`).
+2. Optionally add **dendrograms** (`add_row_tree`, `add_col_tree`).
+3. Attach **annotation tracks** (bar, tile, boxplot, violin, line, text, histogram).
+4. **Print** or **save** the assembled composite figure.
+
+```{r load}
+library(ggcomplex)
+library(ggplot2)
+```
+
+
+# Simulated Data
+
+We will use simulated gene expression data throughout this guide.
+
+```{r data}
+set.seed(2024)
+n_genes   <- 20
+n_samples <- 12
+
+mat <- matrix(rnorm(n_genes * n_samples, mean = 0, sd = 2),
+              nrow = n_genes,
+              dimnames = list(paste0("Gene", 1:n_genes),
+                              paste0("Sample", 1:n_samples)))
+
+row_meta <- data.frame(
+  gene   = rownames(mat),
+  score  = runif(n_genes, 0, 10),
+  group  = sample(c("Pathway_A", "Pathway_B", "Pathway_C"), n_genes, replace = TRUE),
+  pvalue = runif(n_genes, 0.001, 0.05),
+  stringsAsFactors = FALSE
+)
+
+col_meta <- data.frame(
+  sample  = colnames(mat),
+  batch   = rep(c("Batch1", "Batch2"), each = n_samples / 2),
+  quality = rnorm(n_samples, 85, 5),
+  stringsAsFactors = FALSE
+)
+```
+
+
+# Data Pre-processing: `scale_matrix()`
+
+`scale_matrix()` transforms a numeric matrix *before* plotting.
+It supports **9 methods**:
+
+| Method | Description |
+|:---|:---|
+| `"none"` | No transformation (default) |
+| `"row_zscore"` | Row-wise Z-score standardisation |
+| `"col_zscore"` | Column-wise Z-score |
+| `"log2"` | log~2~(x + pseudocount) |
+| `"log10"` | log~10~(x + pseudocount) |
+| `"minmax"` | Row-wise min-max scaling to [0, 1] |
+| `"col_minmax"` | Column-wise min-max scaling |
+| `"center"` | Row-wise centering (subtract row mean) |
+| `"col_center"` | Column-wise centering |
+
+```{r scale-matrix}
+mat_z <- scale_matrix(mat, method = "row_zscore")
+cat("Z-score range:", round(range(mat_z), 2), "\n")
+
+mat_mm <- scale_matrix(mat, method = "minmax")
+cat("Min-max range:", round(range(mat_mm), 2), "\n")
+
+count_mat <- matrix(rpois(n_genes * n_samples, lambda = 50),
+                    nrow = n_genes,
+                    dimnames = dimnames(mat))
+mat_log <- scale_matrix(count_mat, method = "log2", pseudocount = 1)
+cat("Log2 range:", round(range(mat_log), 2), "\n")
+```
+
+
+# Main Plot Types
+
+## `gg_heatmap()` --- Tile Heatmap
+
+The primary entry point. Every parameter is demonstrated below.
+
+### Basic heatmap
+
+```{r heatmap-basic}
+obj <- gg_heatmap(mat_z)
+obj
+```
+
+### Full parameter showcase
+
+```{r heatmap-full, fig.height=8}
+obj <- gg_heatmap(
+  mat_z,
+  fill_palette    = gc_palette("coolwarm"),
+  fill_label      = "Z-score",
+  fill_limits     = c(-3, 3),
+  fill_midpoint   = 0,
+  na_color        = "grey50",
+  border_color    = "white",
+  border_width    = 0.4,
+  show_values     = TRUE,
+  value_format    = "%.1f",
+  value_size      = 2,
+  value_color     = "grey20",
+  show_row_names  = TRUE,
+  show_col_names  = TRUE,
+  row_names_size  = 7,
+  col_names_size  = 7,
+  col_names_angle = 60,
+  row_names_side  = "right",
+  col_names_side  = "bottom",
+  row_names_face  = "italic",
+  col_names_face  = "bold",
+  legend_position = "right",
+  title           = "Gene Expression Heatmap",
+  base_size       = 10
+)
+obj
+```
+
+### Circle cell heatmap (correlation matrix)
+
+`cell_shape = "circle"` draws circular markers instead of tiles --- ideal for
+correlation matrices.
+
+```{r heatmap-circle, fig.width=8, fig.height=8}
+cor_mat <- cor(mat)
+
+gg_heatmap(
+  cor_mat,
+  cell_shape      = "circle",
+  fill_palette    = gc_palette("RdBu"),
+  fill_label      = "Pearson r",
+  fill_limits     = c(-1, 1),
+  fill_midpoint   = 0,
+  border_color    = NA,
+  col_names_angle = 45,
+  title           = "Sample Correlation (Circle Cells)"
+)
+```
+
+
+## `gg_dotplot()` --- Bubble Chart
+
+Encodes **two** numeric dimensions: colour and size.
+
+### Basic dotplot
+
+```{r dotplot-basic}
+pmat <- matrix(runif(n_genes * n_samples, 0.001, 0.1),
+               nrow = n_genes,
+               dimnames = dimnames(mat))
+
+gg_dotplot(mat_z, size_mat = pmat,
+           color_label = "Z-score", size_label = "-log10(p)")
+```
+
+### Full parameter showcase
+
+```{r dotplot-full, fig.height=8}
+gg_dotplot(
+  mat_z,
+  size_mat        = -log10(pmat),
+  color_palette   = gc_palette("PuOr"),
+  color_label     = "Expression",
+  size_label      = "Significance",
+  size_range      = c(0.5, 6),
+  size_threshold  = 1.0,
+  size_reverse    = FALSE,
+  point_shape     = 21,
+  point_stroke    = 0.4,
+  bg_color        = "grey97",
+  bg_border       = "grey85",
+  na_color        = "grey50",
+  fill_limits     = c(-3, 3),
+  fill_midpoint   = 0,
+  show_values     = FALSE,
+  show_row_names  = TRUE,
+  show_col_names  = TRUE,
+  row_names_size  = 7,
+  col_names_size  = 7,
+  col_names_angle = 45,
+  row_names_side  = "left",
+  col_names_side  = "bottom",
+  legend_position = "right",
+  title           = "Enrichment Dot Plot (shape 21 with fill)"
+)
+```
+
+
+## `gg_matrix()` --- Custom Geom
+
+The most flexible constructor. Pass any `geom_fn` and `mapping`.
+
+### Using `geom_point` with colour scale auto-detection
+
+```{r matrix-point}
+gg_matrix(
+  mat_z,
+  geom_fn      = geom_point,
+  mapping      = aes(color = .data$value, size = abs(.data$value)),
+  fill_palette = gc_palette("spectral"),
+  fill_label   = "Z-score",
+  scale_type   = "auto",
+  na_color     = "grey80",
+  title        = "Custom Matrix (geom_point, auto color scale)"
+)
+```
+
+### Adding extra layers
+
+```{r matrix-extra}
+gg_matrix(
+  mat_z,
+  geom_fn      = geom_tile,
+  mapping      = aes(fill = .data$value),
+  fill_palette = gc_palette("viridis"),
+  fill_label   = "Z-score",
+  extra_layers = list(
+    geom_text(aes(label = ifelse(abs(.data$value) > 2, "*", "")),
+              color = "white", size = 4)
+  ),
+  title        = "Matrix with Extra Annotation Layer"
+)
+```
+
+
+# Dendrograms
+
+## `add_row_tree()` / `add_col_tree()`
+
+### Default clustering
+
+```{r tree-default}
+gg_heatmap(mat_z, fill_palette = gc_palette("RdBu")) %>%
+  add_row_tree() %>%
+  add_col_tree()
+```
+
+### Full parameter showcase
+
+```{r tree-full, fig.height=9}
+gg_heatmap(mat_z, fill_palette = gc_palette("RdYlBu"),
+           fill_label = "Z-score") %>%
+  add_row_tree(
+    dist_method     = "correlation",
+    hclust_method   = "ward.D2",
+    width           = 0.2,
+    line_size       = 0.6,
+    color           = "grey40",
+    linetype        = "solid",
+    k               = 3,
+    k_colors        = gc_cat_palette("npg", 3),
+    show_tip_labels = FALSE,
+    tip_label_size  = 2
+  ) %>%
+  add_col_tree(
+    dist_method     = "euclidean",
+    hclust_method   = "complete",
+    height          = 0.12,
+    line_size       = 0.5,
+    linetype        = "solid",
+    k               = 2,
+    k_colors        = c("steelblue", "firebrick")
+  )
+```
+
+### External pre-computed tree
+
+```{r tree-external}
+ext_hc <- hclust(as.dist(1 - cor(t(mat_z))), method = "average")
+
+gg_heatmap(mat_z, fill_palette = gc_palette("PiYG")) %>%
+  add_row_tree(tree = ext_hc, line_size = 0.8, color = "darkgreen")
+```
+
+### Custom distance function
+
+```{r tree-custom-dist}
+my_dist <- function(x) as.dist(1 - cor(t(x), method = "spearman"))
+
+gg_heatmap(mat_z, fill_palette = gc_palette("BrBG")) %>%
+  add_row_tree(dist_fn = my_dist, k = 4)
+```
+
+
+# Annotations
+
+All annotation functions share a common parameter set:
+
+| Parameter | Description |
+|:---|:---|
+| `palette` | Discrete colour vector for `scale_fill/color_manual` |
+| `continuous_palette` | 2/3-colour vector for gradient fills |
+| `fill` / `color` / `alpha` | Fixed aesthetic overrides |
+| `border_color` / `border_width` | Border styling |
+| `show_legend` | Show / hide this track's legend |
+| `anno_title` | Small axis title for the annotation panel |
+| `ylim` | Limit the numeric axis range |
+| `extra_layers` | List of additional ggplot2 layers |
+
+Prepare long-format data for boxplot / violin annotations:
+
+```{r anno-longdata}
+expr_long_row <- do.call(rbind, lapply(1:n_genes, function(i) {
+  data.frame(gene = rownames(mat)[i], expr = mat[i, ])
+}))
+
+expr_long_col <- do.call(rbind, lapply(1:n_samples, function(j) {
+  data.frame(sample = colnames(mat)[j], expr = mat[, j])
+}))
+```
+
+## Bar chart: `add_row_bar()` / `add_col_bar()`
+
+```{r anno-bar, fig.height=8, fig.width=10}
+gg_heatmap(mat_z, fill_palette = gc_palette("RdBu")) %>%
+  add_row_tree(dist_method = "correlation", k = 3) %>%
+  add_col_tree(k = 2) %>%
+  add_row_bar(
+    row_meta,
+    aes(x = gene, y = score, fill = group),
+    palette    = gc_cat_palette("jco", 3),
+    anno_title = "Score",
+    ylim       = c(0, 12),
+    width      = 0.3,
+    alpha      = 0.85,
+    side       = "right"
+  ) %>%
+  add_col_bar(
+    col_meta,
+    aes(x = sample, y = quality),
+    fill       = "steelblue",
+    anno_title = "Quality",
+    ylim       = c(70, 100),
+    height     = 0.18,
+    side       = "top"
+  )
+```
+
+## Tile strip: `add_row_tile()` / `add_col_tile()`
+
+```{r anno-tile, fig.height=8, fig.width=10}
+gg_heatmap(mat_z, fill_palette = gc_palette("RdBu")) %>%
+  add_row_tree(k = 3) %>%
+  add_col_tree() %>%
+  add_row_tile(
+    row_meta,
+    aes(x = gene, y = 1, fill = group),
+    palette      = gc_cat_palette("lancet", 3),
+    border_color = "white",
+    border_width = 0.8,
+    anno_title   = "Pathway",
+    width        = 0.06
+  ) %>%
+  add_col_tile(
+    col_meta,
+    aes(x = sample, y = 1, fill = batch),
+    palette      = gc_cat_palette("nejm", 2),
+    border_color = "white",
+    border_width = 0.8,
+    anno_title   = "Batch",
+    height       = 0.04
+  )
+```
+
+## Dot/Point: `add_row_dot()` / `add_col_dot()`
+
+```{r anno-dot, fig.height=8, fig.width=10}
+gg_heatmap(mat_z, fill_palette = gc_palette("RdBu")) %>%
+  add_row_tree(k = 3) %>%
+  add_col_tree() %>%
+  add_row_dot(
+    row_meta,
+    aes(x = gene, y = score, color = group),
+    palette    = gc_cat_palette("jco", 3),
+    anno_title = "Score",
+    width      = 0.25,
+    side       = "right"
+  ) %>%
+  add_col_dot(
+    col_meta,
+    aes(x = sample, y = quality, color = batch),
+    palette    = gc_cat_palette("nejm", 2),
+    anno_title = "Quality",
+    height     = 0.15,
+    side       = "top"
+  )
+```
+
+## Boxplot: `add_row_box()` / `add_col_box()`
+
+```{r anno-box, fig.height=8, fig.width=10}
+gg_heatmap(mat_z) %>%
+  add_row_tree() %>%
+  add_col_tree() %>%
+  add_row_box(
+    expr_long_row,
+    aes(x = gene, y = expr),
+    fill       = "lightyellow",
+    color      = "grey50",
+    anno_title = "Row Dist.",
+    width      = 0.3,
+    side       = "right"
+  ) %>%
+  add_col_box(
+    expr_long_col,
+    aes(x = sample, y = expr),
+    fill       = "#D6EAF8",
+    color      = "grey50",
+    anno_title = "Col Dist.",
+    height     = 0.2,
+    side       = "top"
+  )
+```
+
+## Violin: `add_row_violin()` / `add_col_violin()`
+
+```{r anno-violin, fig.height=8, fig.width=10}
+gg_heatmap(mat_z) %>%
+  add_row_tree() %>%
+  add_col_tree() %>%
+  add_row_violin(
+    expr_long_row,
+    aes(x = gene, y = expr, fill = gene),
+    show_legend = FALSE,
+    alpha       = 0.6,
+    anno_title  = "Row Violin",
+    width       = 0.3,
+    side        = "right"
+  ) %>%
+  add_col_violin(
+    expr_long_col,
+    aes(x = sample, y = expr, fill = sample),
+    show_legend = FALSE,
+    alpha       = 0.6,
+    anno_title  = "Col Violin",
+    height      = 0.2,
+    side        = "top"
+  )
+```
+
+## Line: `add_row_line()` / `add_col_line()`
+
+```{r anno-line, fig.height=8, fig.width=10}
+gg_heatmap(mat_z) %>%
+  add_row_tree() %>%
+  add_col_tree() %>%
+  add_row_line(
+    row_meta,
+    aes(x = gene, y = score),
+    color            = "darkgreen",
+    line_show_points = TRUE,
+    line_point_size  = 1.5,
+    anno_title       = "Score Trend",
+    width            = 0.25,
+    side             = "right"
+  ) %>%
+  add_col_line(
+    col_meta,
+    aes(x = sample, y = quality),
+    color            = "darkred",
+    line_show_points = TRUE,
+    line_point_size  = 2,
+    anno_title       = "QC Score",
+    height           = 0.15,
+    side             = "top"
+  )
+```
+
+## Text: `add_row_text()` / `add_col_text()`
+
+```{r anno-text, fig.height=8, fig.width=10}
+col_meta$label <- paste0("B", ifelse(col_meta$batch == "Batch1", 1, 2))
+
+gg_heatmap(mat_z) %>%
+  add_row_tree() %>%
+  add_col_tree() %>%
+  add_row_text(
+    row_meta,
+    aes(x = gene, y = 1, label = gene),
+    text_size     = 2.5,
+    text_fontface = "italic",
+    text_angle    = 0,
+    color         = "grey30",
+    width         = 0.12,
+    side          = "right"
+  ) %>%
+  add_col_text(
+    col_meta,
+    aes(x = sample, y = 1, label = label),
+    text_size     = 3,
+    text_fontface = "bold",
+    text_angle    = 0,
+    color         = "steelblue",
+    height        = 0.05,
+    side          = "top"
+  )
+```
+
+## Histogram: `add_row_histogram()` / `add_col_histogram()`
+
+```{r anno-hist, fig.height=8, fig.width=10}
+gg_heatmap(mat_z) %>%
+  add_row_tree() %>%
+  add_col_tree() %>%
+  add_row_histogram(
+    row_meta,
+    aes(x = gene, y = score),
+    fill       = "coral",
+    alpha      = 0.7,
+    anno_title = "Score",
+    ylim       = c(0, 12),
+    width      = 0.2,
+    side       = "right"
+  ) %>%
+  add_col_histogram(
+    col_meta,
+    aes(x = sample, y = quality),
+    fill       = "#76D7C4",
+    alpha      = 0.7,
+    anno_title = "Quality",
+    ylim       = c(70, 100),
+    height     = 0.15,
+    side       = "top"
+  )
+```
+
+## Continuous palette annotation
+
+When annotations map a continuous variable to fill, use `continuous_palette`
+instead of the discrete `palette`.
+
+```{r anno-continuous, fig.height=8, fig.width=10}
+gg_heatmap(mat_z, fill_palette = gc_palette("RdBu")) %>%
+  add_row_tree(k = 3) %>%
+  add_row_bar(
+    row_meta,
+    aes(x = gene, y = pvalue, fill = pvalue),
+    continuous_palette = c("white", "firebrick"),
+    anno_title         = "P-value",
+    width              = 0.18
+  ) %>%
+  add_col_dot(
+    col_meta,
+    aes(x = sample, y = quality, color = quality),
+    continuous_palette = c("steelblue", "firebrick"),
+    anno_title         = "Quality",
+    height             = 0.15,
+    side               = "top"
+  )
+```
+
+
+# Panel Borders
+
+Both the main heatmap and annotation panels support optional border frames
+via `panel_border_color` and `panel_border_width`. Borders help visually
+separate elements and give the figure a polished look.
+
+## Main plot border
+
+```{r border-main, fig.height=8}
+gg_heatmap(mat_z,
+           fill_palette       = gc_palette("RdBu"),
+           panel_border_color = "grey30",
+           panel_border_width = 1) %>%
+  add_row_tree(k = 3) %>%
+  add_col_tree(k = 2)
+```
+
+## Annotation panel borders
+
+Each annotation track can independently enable a border:
+
+```{r border-anno, fig.height=9}
+gg_heatmap(mat_z,
+           fill_palette       = gc_palette("RdYlBu"),
+           fill_label         = "Z-score",
+           panel_border_color = "grey40",
+           panel_border_width = 0.8) %>%
+  add_row_tree(k = 3) %>%
+  add_col_tree(k = 2) %>%
+  add_row_tile(
+    row_meta, aes(x = gene, y = 1, fill = group),
+    palette            = gc_cat_palette("jco", 3),
+    anno_title         = "Pathway",
+    panel_border_color = "grey40",
+    panel_border_width = 0.8,
+    width              = 0.06
+  ) %>%
+  add_row_bar(
+    row_meta, aes(x = gene, y = score, fill = group),
+    palette            = gc_cat_palette("jco", 3),
+    anno_title         = "Score",
+    ylim               = c(0, 12),
+    panel_border_color = "grey40",
+    panel_border_width = 0.8,
+    width              = 0.25,
+    show_legend        = FALSE
+  ) %>%
+  add_col_tile(
+    col_meta, aes(x = sample, y = 1, fill = batch),
+    palette            = gc_cat_palette("lancet", 2),
+    anno_title         = "Batch",
+    panel_border_color = "grey40",
+    panel_border_width = 0.8,
+    height             = 0.04
+  ) %>%
+  add_col_bar(
+    col_meta, aes(x = sample, y = quality),
+    fill               = "#4DBBD5",
+    anno_title         = "Quality",
+    ylim               = c(70, 100),
+    panel_border_color = "grey40",
+    panel_border_width = 0.8,
+    height             = 0.15
+  )
+```
+
+
+## Panel Spacing (gap between main plot and subplots)
+
+Use `panel_spacing` in the main plot constructor to set a global default gap
+(in pt) between the main heatmap and all surrounding panels. Each annotation or
+tree function also accepts a `gap` argument that overrides the global default
+for that individual panel.
+
+```{r panel-spacing, fig.height=6, fig.width=10}
+mat_sp <- matrix(rnorm(8 * 6), nrow = 8,
+                 dimnames = list(paste0("G", 1:8), paste0("S", 1:6)))
+row_df_sp <- data.frame(gene = paste0("G", 1:8),
+                        score = runif(8, 2, 10))
+col_df_sp <- data.frame(sample = paste0("S", 1:6),
+                        quality = runif(6, 70, 100))
+
+gg_heatmap(mat_sp, panel_spacing = 8) %>%
+  add_row_tree() %>%
+  add_col_tree() %>%
+  add_row_bar(row_df_sp, aes(x = gene, y = score),
+              fill = "steelblue", anno_title = "Score") %>%
+  add_col_bar(col_df_sp, aes(x = sample, y = quality),
+              fill = "#E64B35", anno_title = "Quality", ylim = c(70, 100))
+```
+
+Individual `gap` override per panel:
+
+```{r panel-gap-override, fig.height=6, fig.width=10}
+gg_heatmap(mat_sp, panel_spacing = 4) %>%
+  add_row_tree(gap = 0) %>%
+  add_col_tree(gap = 12) %>%
+  add_row_bar(row_df_sp, aes(x = gene, y = score),
+              fill = "steelblue", anno_title = "Score", gap = 10) %>%
+  add_col_bar(col_df_sp, aes(x = sample, y = quality),
+              fill = "#E64B35", anno_title = "Quality",
+              ylim = c(70, 100), gap = 0)
+```
+
+
+# Colour Palettes
+
+## Continuous palettes: `gc_palette()`
+
+17 built-in palettes for heatmap gradients.
+
+```{r palette-continuous}
+gc_palette_names()
+```
+
+```{r palette-demo-cont, fig.height=3, fig.width=9}
+demo <- expand.grid(x = 1:20, palette = c("RdBu", "viridis", "plasma", "YlOrRd"))
+demo$value <- rep(seq(-3, 3, length.out = 20), 4)
+
+ggplot(demo, aes(x = x, y = palette, fill = value)) +
+  geom_tile() +
+  scale_fill_gradient2(low = "#2166AC", mid = "white", high = "#B2182B") +
+  theme_minimal() +
+  labs(title = "Palette Preview (conceptual)")
+```
+
+## Categorical palettes: `gc_cat_palette()`
+
+26 palettes covering RColorBrewer, ggsci journal, genomics, and sci-fi themes.
+
+```{r palette-cat, fig.height=5, fig.width=8}
+pal_names <- c("npg", "jco", "lancet", "nejm", "d3", "set1")
+plot_list <- lapply(pal_names, function(nm) {
+  cols <- gc_cat_palette(nm)
+  df <- data.frame(x = seq_along(cols), color = cols)
+  ggplot(df, aes(x = x, y = 1, fill = color)) +
+    geom_tile(show.legend = FALSE) +
+    scale_fill_identity() +
+    labs(title = nm) +
+    theme_void() +
+    theme(plot.title = element_text(hjust = 0.5, size = 9))
+})
+gridExtra::grid.arrange(grobs = plot_list, ncol = 2)
+```
+
+Interpolation for more colours than the palette contains:
+
+```{r palette-interpolate}
+cat("NPG (10 colours):", gc_cat_palette("npg"), "\n")
+cat("NPG (15 interpolated):", gc_cat_palette("npg", n = 15), "\n")
+```
+
+
+# Utility Functions
+
+## `set_title()` --- Global titles
+
+```{r set-title, fig.height=7}
+gg_heatmap(mat_z) %>%
+  add_row_tree() %>%
+  add_col_tree() %>%
+  set_title(
+    title    = "My Composite Figure",
+    subtitle = "20 genes x 12 samples (Z-score normalised)",
+    caption  = "Generated by ggcomplex"
+  )
+```
+
+## `summary()` --- Object inspection
+
+```{r summary}
+obj <- gg_heatmap(mat_z) %>%
+  add_row_tree(k = 3) %>%
+  add_col_tree() %>%
+  add_row_bar(row_meta, aes(x = gene, y = score, fill = group),
+              palette = gc_cat_palette("npg", 3)) %>%
+  add_col_tile(col_meta, aes(x = sample, y = 1, fill = batch),
+               palette = gc_cat_palette("lancet", 2))
+
+summary(obj)
+```
+
+## `assemble_plot()` --- Manual assembly
+
+`assemble_plot()` returns the raw `aplot` object for further manipulation:
+
+```{r assemble}
+ap <- assemble_plot(obj)
+class(ap)
+```
+
+## `subset_rows()` / `subset_cols()` --- Subsetting
+
+```{r subset, fig.height=5}
+obj_small <- gg_heatmap(mat_z) %>%
+  add_row_tree() %>%
+  add_col_tree() %>%
+  subset_rows(paste0("Gene", 1:10)) %>%
+  subset_cols(paste0("Sample", 1:6))
+obj_small
+```
+
+## `gc_save()` --- Saving to file
+
+```{r gc-save, eval=FALSE}
+gc_save(obj, "composite_heatmap.pdf", width = 14, height = 10, dpi = 300)
+gc_save(obj, "composite_heatmap.png", width = 14, height = 10, dpi = 300)
+```
+
+
+# Circular Heatmaps
+
+ggcomplex supports **circular (polar) heatmaps** where columns are arranged
+around the circle (angular axis) and rows form concentric rings (radial axis).
+This layout is especially useful for large sample panels or when presenting
+data in a visually compact way.
+
+## `gg_circular()` --- Basic Circular Heatmap
+
+```{r circ-basic, fig.width=8, fig.height=8}
+set.seed(2024)
+circ_mat <- matrix(rnorm(8 * 24), 8, 24,
+                   dimnames = list(paste0("Gene", 1:8),
+                                   paste0("S", 1:24)))
+
+gg_circular(circ_mat,
+            fill_palette  = gc_palette("RdBu"),
+            fill_label    = "Expression",
+            fill_midpoint = 0,
+            inner_radius  = 3,
+            track_height  = 1,
+            title         = "Basic Circular Heatmap (full circle)")
+```
+
+### Key parameters
+
+| Parameter | Description |
+|:---|:---|
+| `inner_radius` | Radius of the inner hole (larger = bigger centre) |
+| `track_height` | Radial height of each row ring |
+| `ring_gap` | Default radial gap between heatmap and annotation rings |
+| `gap_degree` | Size of the opening in degrees (0 = full, 30 = 30° gap) |
+| `start_angle` | Starting angle in radians (`NULL` = auto for gap) |
+| `direction` | `1` = clockwise, `-1` = counter-clockwise |
+| `show_row_labels` | Display row names in the gap opening |
+| `show_col_labels` | Display column names around the outer edge |
+
+### Opening / gap
+
+Set `gap_degree` to create an arc-shaped opening at the bottom of the
+circle, commonly used in publication-quality circular heatmaps:
+
+```{r circ-gap, fig.width=8, fig.height=8}
+gg_circular(circ_mat,
+            fill_palette    = gc_palette("RdBu"),
+            gap_degree      = 40,
+            inner_radius    = 4,
+            track_height    = 0.8,
+            show_row_labels = TRUE,
+            row_label_size  = 2.5,
+            title           = "Circular Heatmap with 40-degree Gap")
+```
+
+## `add_circular_tree()` --- Circular Dendrogram
+
+`add_circular_tree(which = "col")` clusters columns and draws a fan-shaped
+dendrogram **inside** the inner circle. `which = "row"` reorders rows only
+(no visual tree).
+
+```{r circ-tree, fig.width=8, fig.height=8}
+gg_circular(circ_mat,
+            fill_palette = c("navy", "white", "firebrick"),
+            inner_radius = 4,
+            track_height = 0.8) %>%
+  add_circular_tree(which = "col",
+                    dist_method   = "euclidean",
+                    hclust_method = "ward.D2",
+                    color         = "grey40",
+                    line_size     = 0.3)
+```
+
+Row clustering (reorder only, no inner tree):
+
+```{r circ-row-cluster, fig.width=8, fig.height=8}
+gg_circular(circ_mat,
+            fill_palette   = gc_palette("PuOr"),
+            inner_radius   = 4,
+            show_row_labels = TRUE,
+            row_label_size  = 2.5) %>%
+  add_circular_tree(which = "row",
+                    dist_method = "correlation") %>%
+  add_circular_tree(which = "col", color = "brown")
+```
+
+## `add_outer_ring()` --- Annotation Rings
+
+Annotation rings are added concentrically **outside** the heatmap. Four geom
+types are supported: `"tile"`, `"bar"`, `"point"`, and `"text"`.
+
+### Tile ring (discrete groups)
+
+```{r circ-ring-tile, fig.width=9, fig.height=9}
+circ_col_meta <- data.frame(
+  sample = colnames(circ_mat),
+  group  = rep(c("Control", "Treatment"), each = 12),
+  score  = runif(24, 0, 100),
+  stringsAsFactors = FALSE
+)
+
+gg_circular(circ_mat,
+            fill_palette = gc_palette("RdBu"),
+            inner_radius = 3,
+            track_height = 0.8) %>%
+  add_circular_tree(which = "col", color = "grey50") %>%
+  add_outer_ring(circ_col_meta,
+                 col_var  = "sample",
+                 fill_var = "group",
+                 geom     = "tile",
+                 palette  = c(Control = "#4DAF4A", Treatment = "#E41A1C"),
+                 ring_label = "Group",
+                 height   = 0.8)
+```
+
+### Tile ring (continuous palette)
+
+```{r circ-ring-cont, fig.width=9, fig.height=9}
+circ_pval_meta <- data.frame(
+  sample = colnames(circ_mat),
+  pvalue = runif(24, 0, 1)
+)
+
+gg_circular(circ_mat,
+            fill_palette = gc_palette("RdBu"),
+            inner_radius = 3) %>%
+  add_outer_ring(circ_pval_meta,
+                 col_var  = "sample",
+                 fill_var = "pvalue",
+                 geom     = "tile",
+                 continuous_palette = c("white", "darkgreen"),
+                 ring_label = "-log10(p)",
+                 height   = 0.8)
+```
+
+### Bar ring (numeric values)
+
+```{r circ-ring-bar, fig.width=9, fig.height=9}
+gg_circular(circ_mat,
+            fill_palette = gc_palette("RdBu"),
+            inner_radius = 3,
+            track_height = 0.8) %>%
+  add_circular_tree(which = "col") %>%
+  add_outer_ring(circ_col_meta,
+                 col_var   = "sample",
+                 value_var = "score",
+                 geom      = "bar",
+                 fill      = "steelblue",
+                 ring_label = "Score",
+                 height    = 1.5)
+```
+
+### Text ring
+
+```{r circ-ring-text, fig.width=9, fig.height=9}
+circ_label_meta <- data.frame(
+  sample = colnames(circ_mat),
+  label  = paste0("Lab", 1:24)
+)
+
+gg_circular(circ_mat,
+            inner_radius = 3,
+            track_height = 0.8) %>%
+  add_outer_ring(circ_label_meta,
+                 col_var   = "sample",
+                 label_var = "label",
+                 geom      = "text",
+                 height    = 1)
+```
+
+## Circular Heatmap Borders
+
+`heatmap_border_color` and `heatmap_border_width` draw thick arc and radial
+borders around the heatmap ring, giving a polished, publication-ready look.
+
+```{r circ-border, fig.width=8, fig.height=8}
+gg_circular(circ_mat,
+            fill_palette         = gc_palette("PuOr"),
+            inner_radius         = 3,
+            gap_degree           = 30,
+            heatmap_border_color = "black",
+            heatmap_border_width = 1.2,
+            title                = "Circular Heatmap with Borders") %>%
+  add_circular_tree(which = "col", color = "grey40")
+```
+
+
+## Column Split (Sectors)
+
+`col_split` divides columns into named groups shown as separate angular
+sectors, separated by `split_gap` x-units. An inner ring automatically
+displays group labels. Combined with `heatmap_border_color` this produces
+the classic split circular heatmap look.
+
+| Parameter | Description |
+|:---|:---|
+| `col_split` | Named character/factor vector (one per column, names = colnames) |
+| `split_gap` | Angular gap between sectors (x-units, default 1) |
+| `heatmap_border_color` | Colour for sector borders (`NA` = no border) |
+| `heatmap_border_width` | Line width of the sector border |
+
+### Basic split
+
+```{r circ-split-basic, fig.width=9, fig.height=9}
+circ_groups <- setNames(
+  rep(c("Group A", "Group B", "Group C"), c(8, 8, 8)),
+  colnames(circ_mat)
+)
+
+gg_circular(circ_mat,
+            fill_palette         = c("#E66101", "white", "#1B7837"),
+            fill_midpoint        = 0,
+            gap_degree           = 50,
+            inner_radius         = 3,
+            track_height         = 0.8,
+            col_split            = circ_groups,
+            split_gap            = 1.5,
+            heatmap_border_color = "grey20",
+            heatmap_border_width = 0.9,
+            show_col_labels      = TRUE,
+            col_label_size       = 2.2,
+            title                = "Three-Sector Circular Heatmap")
+```
+
+### Split + dendrogram + annotation rings
+
+```{r circ-split-full, fig.width=10, fig.height=10}
+circ_groups4 <- setNames(
+  rep(c("A", "B", "C", "D"), each = 6),
+  colnames(circ_mat)
+)
+
+gg_circular(
+    circ_mat,
+    fill_palette         = gc_palette("RdBu"),
+    fill_label           = "Z-score",
+    fill_midpoint        = 0,
+    inner_radius         = 4,
+    track_height         = 0.7,
+    gap_degree           = 40,
+    col_split            = circ_groups4,
+    split_gap            = 1.2,
+    heatmap_border_color = "grey30",
+    heatmap_border_width = 0.8,
+    show_row_labels      = TRUE,
+    row_label_size       = 2,
+    title                = "Split Circular Heatmap (4 sectors)"
+  ) %>%
+  add_circular_tree(which = "col",
+                    hclust_method = "ward.D2",
+                    color = "grey40") %>%
+  add_outer_ring(circ_col_meta,
+                 col_var  = "sample",
+                 fill_var = "group",
+                 geom     = "tile",
+                 palette  = c(Control = "#4DAF4A", Treatment = "#E41A1C"),
+                 ring_label = "Group",
+                 height   = 0.6) %>%
+  add_outer_ring(circ_col_meta,
+                 col_var   = "sample",
+                 value_var = "score",
+                 geom      = "bar",
+                 fill      = "#4DBBD5",
+                 ring_label = "Score",
+                 height    = 1.2)
+```
+
+### Full-circle split (no gap)
+
+```{r circ-split-full-circle, fig.width=9, fig.height=9}
+gg_circular(circ_mat,
+            col_split            = circ_groups4,
+            split_gap            = 1,
+            heatmap_border_color = "grey30",
+            title                = "Full-Circle with Four Sectors")
+```
+
+
+## Inner Links (Chord Diagram)
+
+`add_inner_links()` draws curved Bézier connections inside the inner circle,
+creating a chord-diagram / network-graph effect. Each link connects two column
+positions, curving through the centre.
+
+| Parameter | Description |
+|:---|:---|
+| `links` | Data frame with *from* and *to* columns (column names) |
+| `color_var` | Optional column to map to link colour |
+| `continuous_palette` | Gradient colours for a continuous `color_var` |
+| `palette` | Named colours for a discrete `color_var` |
+| `linewidth_var` | Optional column to map to line width |
+| `curvature` | 0 = flat, 1 = dips to the very centre (default 0.7) |
+| `alpha` | Transparency (default 0.5) |
+
+### Correlation links (continuous colour + width)
+
+```{r circ-links-basic, fig.width=9, fig.height=9}
+circ_cor <- cor(circ_mat)
+cor_pairs <- which(abs(circ_cor) > 0.3 & upper.tri(circ_cor), arr.ind = TRUE)
+cor_links <- data.frame(
+  from = colnames(circ_mat)[cor_pairs[, 1]],
+  to   = colnames(circ_mat)[cor_pairs[, 2]],
+  cor  = circ_cor[cor_pairs]
+)
+
+gg_circular(circ_mat,
+            fill_palette = gc_palette("RdBu"),
+            inner_radius = 4,
+            gap_degree   = 30,
+            title        = "Correlation Links (|r| > 0.3)") %>%
+  add_inner_links(cor_links,
+                  from_var  = "from", to_var = "to",
+                  color_var = "cor",
+                  continuous_palette = c("steelblue", "grey90", "firebrick"),
+                  linewidth_var     = "cor",
+                  linewidth_range   = c(0.3, 1.5),
+                  alpha = 0.6, curvature = 0.7)
+```
+
+### Discrete-colour links
+
+```{r circ-links-discrete, fig.width=9, fig.height=9}
+net_links <- data.frame(
+  from = c("S1", "S3", "S5", "S8", "S10", "S14", "S18", "S22"),
+  to   = c("S12", "S17", "S20", "S16", "S24", "S2",  "S6",  "S11"),
+  type = rep(c("activation", "inhibition"), each = 4)
+)
+
+gg_circular(circ_mat,
+            fill_palette = gc_palette("PuOr"),
+            inner_radius = 4,
+            gap_degree   = 30,
+            title        = "Network-style Links (discrete)") %>%
+  add_inner_links(net_links,
+                  from_var  = "from", to_var = "to",
+                  color_var = "type",
+                  palette   = c(activation = "#E41A1C", inhibition = "#377EB8"),
+                  linewidth = 0.8, alpha = 0.65, curvature = 0.75)
+```
+
+### Links + tree + annotation ring
+
+```{r circ-links-tree, fig.width=10, fig.height=10}
+gg_circular(circ_mat,
+            fill_palette         = gc_palette("RdBu"),
+            inner_radius         = 5,
+            gap_degree           = 40,
+            heatmap_border_color = "grey30",
+            heatmap_border_width = 0.8,
+            title                = "Links + Tree + Ring") %>%
+  add_circular_tree(which = "col", color = "grey50") %>%
+  add_outer_ring(circ_col_meta,
+                 col_var  = "sample", fill_var = "group", geom = "tile",
+                 palette  = c(Control = "#4DAF4A", Treatment = "#E41A1C"),
+                 ring_label = "Group", height = 0.6) %>%
+  add_inner_links(cor_links,
+                  from_var  = "from", to_var = "to",
+                  color_var = "cor",
+                  continuous_palette = c("blue", "grey80", "red"),
+                  alpha = 0.4, curvature = 0.6)
+```
+
+### Links inside split sectors
+
+```{r circ-links-split, fig.width=10, fig.height=10}
+circ_groups4 <- setNames(
+  rep(c("A", "B", "C", "D"), each = 6),
+  colnames(circ_mat)
+)
+
+gg_circular(circ_mat,
+            fill_palette         = c("#E66101", "white", "#1B7837"),
+            inner_radius         = 4,
+            gap_degree           = 50,
+            col_split            = circ_groups4,
+            split_gap            = 1.2,
+            heatmap_border_color = "grey20",
+            title                = "Split Sectors + Links") %>%
+  add_inner_links(cor_links,
+                  from_var  = "from", to_var = "to",
+                  color_var = "cor",
+                  continuous_palette = c("purple", "grey90", "orange"),
+                  linewidth_var     = "cor",
+                  linewidth_range   = c(0.3, 1.2),
+                  alpha = 0.55, curvature = 0.8)
+```
+
+
+## Multi-ring Circular Example
+
+A production-quality figure combining **all** circular features:
+column split (4 sectors), gap opening, row & column dendrograms, inner
+correlation links, heatmap borders, row labels, and **all 6 outer ring
+types** (tile, bar, point, line, histogram, text).
+
+```{r circ-comprehensive-data}
+circ_label_meta <- data.frame(
+  sample = colnames(circ_mat),
+  label  = paste0("Lab", 1:24)
+)
+
+circ_expr_meta <- data.frame(
+  sample   = colnames(circ_mat),
+  expr_avg = colMeans(circ_mat),
+  fc       = rnorm(24, mean = 0.5, sd = 1.2)
+)
+
+circ_signal_meta <- data.frame(
+  sample = colnames(circ_mat),
+  signal = sin(seq(0, 4 * pi, length.out = 24)) * 2 + runif(24, -0.3, 0.3)
+)
+```
+
+```{r circ-comprehensive, fig.width=12, fig.height=12}
+gg_circular(
+    circ_mat,
+    fill_palette         = gc_palette("RdBu"),
+    fill_label           = "Z-score",
+    fill_midpoint        = 0,
+    inner_radius         = 5,
+    track_height         = 0.6,
+    gap_degree           = 40,
+    col_split            = circ_groups4,
+    split_gap            = 1.2,
+    heatmap_border_color = "grey20",
+    heatmap_border_width = 0.8,
+    show_row_labels      = TRUE,
+    row_label_size       = 2.2,
+    ring_gap             = 0.3,
+    title                = "All Features: 4 sectors + 6 ring types + links + trees + borders"
+  ) %>%
+  # --- inner dendrograms ---
+  add_circular_tree(which = "col",
+                    hclust_method = "ward.D2",
+                    color = "grey40") %>%
+  add_circular_tree(which = "row",
+                    dist_method = "correlation") %>%
+  # --- inner correlation links (chord diagram) ---
+  add_inner_links(cor_links,
+                  from_var  = "from", to_var = "to",
+                  color_var = "cor",
+                  continuous_palette = c("steelblue", "grey80", "firebrick"),
+                  alpha = 0.3, curvature = 0.7) %>%
+  # --- Ring 1: discrete tile (group) ---
+  add_outer_ring(circ_col_meta,
+                 col_var    = "sample",
+                 fill_var   = "group",
+                 geom       = "tile",
+                 palette    = c(Control = "#4DAF4A", Treatment = "#E41A1C"),
+                 ring_label = "Group",
+                 height     = 0.5) %>%
+  # --- Ring 2: bar (score) ---
+  add_outer_ring(circ_col_meta,
+                 col_var    = "sample",
+                 value_var  = "score",
+                 geom       = "bar",
+                 fill       = "#4DBBD5",
+                 ring_label = "Score",
+                 height     = 1.0) %>%
+  # --- Ring 3: continuous tile (p-value heatmap) ---
+  add_outer_ring(circ_pval_meta,
+                 col_var            = "sample",
+                 fill_var           = "pvalue",
+                 geom               = "tile",
+                 continuous_palette = c("lightyellow", "darkred"),
+                 ring_label         = "P-value",
+                 height             = 0.5) %>%
+  # --- Ring 4: point/dot (fold change) ---
+  add_outer_ring(circ_expr_meta,
+                 col_var    = "sample",
+                 value_var  = "fc",
+                 geom       = "point",
+                 fill       = "#7570B3",
+                 ring_label = "FC",
+                 height     = 0.8) %>%
+  # --- Ring 5: line (signal trend) ---
+  add_outer_ring(circ_signal_meta,
+                 col_var    = "sample",
+                 value_var  = "signal",
+                 geom       = "line",
+                 fill       = "#D95F02",
+                 ring_label = "Signal",
+                 height     = 1.0) %>%
+  # --- Ring 6: histogram (expression mean, coloured by group) ---
+  add_outer_ring(circ_expr_meta,
+                 col_var            = "sample",
+                 value_var          = "expr_avg",
+                 fill_var           = "expr_avg",
+                 geom               = "histogram",
+                 continuous_palette = c("#F7FCB1", "#31A354"),
+                 ring_label         = "Mean Expr",
+                 height             = 1.0) %>%
+  # --- Ring 7: text labels (outermost) ---
+  add_outer_ring(circ_label_meta,
+                 col_var   = "sample",
+                 label_var = "label",
+                 geom      = "text",
+                 height    = 1.0)
+```
+
+### `summary()` for circular objects
+
+```{r circ-summary}
+circ_obj <- gg_circular(circ_mat, inner_radius = 3) %>%
+  add_circular_tree(which = "col") %>%
+  add_outer_ring(circ_col_meta,
+                 col_var = "sample", fill_var = "group",
+                 geom = "tile",
+                 palette = c(Control = "#4DAF4A", Treatment = "#E41A1C")) %>%
+  add_outer_ring(circ_col_meta,
+                 col_var = "sample", value_var = "score",
+                 geom = "bar", fill = "steelblue")
+
+summary(circ_obj)
+```
+
+
+# Comprehensive Example (Linear)
+
+Putting everything together in a single production-quality figure that uses
+**all 8 annotation types** (bar, tile, dot, boxplot, violin, line, text,
+histogram) distributed across **all 4 sides** with panel borders on every
+element.
+
+| Side | Annotations |
+|:---|:---|
+| **Left** | tile (pathway), bar (score), violin (distribution), dot (p-value) |
+| **Right** | boxplot (expression), histogram (score), text (labels) |
+| **Top** | tile (batch), bar (quality), line (QC trend), dot (quality) |
+| **Bottom** | boxplot (expression), violin (distribution), histogram (QC), text (labels) |
+
+```{r comprehensive-data}
+expr_long_row <- do.call(rbind, lapply(1:n_genes, function(i) {
+  data.frame(gene = rownames(mat)[i], expr = mat[i, ])
+}))
+expr_long_col <- do.call(rbind, lapply(1:n_samples, function(j) {
+  data.frame(sample = colnames(mat)[j], expr = mat[, j])
+}))
+```
+
+```{r comprehensive, fig.width=18, fig.height=14}
+final <- gg_heatmap(
+    scale_matrix(mat, "row_zscore"),
+    fill_palette       = gc_palette("RdBu"),
+    fill_label         = "Z-score",
+    fill_limits        = c(-3, 3),
+    fill_midpoint      = 0,
+    border_color       = "white",
+    border_width       = 0.3,
+    row_names_side     = "right",
+    row_names_face     = "italic",
+    row_names_size     = 7,
+    col_names_angle    = 50,
+    base_size          = 9,
+    panel_border_color = "grey30",
+    panel_border_width = 0.8
+  ) %>%
+  # --- dendrograms -------------------------------------------------------
+  add_row_tree(
+    dist_method   = "correlation",
+    hclust_method = "ward.D2",
+    k             = 3,
+    k_colors      = gc_cat_palette("npg", 3),
+    line_size     = 0.6,
+    width         = 0.18
+  ) %>%
+  add_col_tree(
+    dist_method   = "euclidean",
+    hclust_method = "complete",
+    k             = 2,
+    k_colors      = c("#0073C2", "#EFC000"),
+    height        = 0.10
+  ) %>%
+  # --- LEFT: tile + bar + violin (side = "left") -------------------------
+  add_row_tile(
+    row_meta, aes(x = gene, y = 1, fill = group),
+    palette            = gc_cat_palette("jco", 3),
+    anno_title         = "Pathway",
+    panel_border_color = "grey50",
+    panel_border_width = 0.5,
+    width              = 0.05,
+    side               = "left"
+  ) %>%
+  add_row_bar(
+    row_meta, aes(x = gene, y = score, fill = group),
+    palette            = gc_cat_palette("jco", 3),
+    anno_title         = "Score",
+    ylim               = c(0, 12),
+    panel_border_color = "grey50",
+    panel_border_width = 0.5,
+    width              = 0.22,
+    show_legend        = FALSE,
+    side               = "left"
+  ) %>%
+  add_row_violin(
+    expr_long_row, aes(x = gene, y = expr, fill = gene),
+    show_legend        = FALSE,
+    alpha              = 0.5,
+    anno_title         = "Distr.",
+    panel_border_color = "grey50",
+    panel_border_width = 0.5,
+    width              = 0.22,
+    side               = "left"
+  ) %>%
+  add_row_dot(
+    row_meta, aes(x = gene, y = pvalue, color = pvalue),
+    continuous_palette = c("steelblue", "firebrick"),
+    anno_title         = "P-val",
+    panel_border_color = "grey50",
+    panel_border_width = 0.5,
+    width              = 0.15,
+    side               = "left"
+  ) %>%
+  # --- RIGHT: boxplot + histogram + text (side = "right") ----------------
+  add_row_box(
+    expr_long_row, aes(x = gene, y = expr),
+    fill               = "lightyellow",
+    color              = "grey50",
+    anno_title         = "Boxplot",
+    panel_border_color = "grey50",
+    panel_border_width = 0.5,
+    width              = 0.22,
+    side               = "right"
+  ) %>%
+  add_row_histogram(
+    row_meta, aes(x = gene, y = score),
+    fill               = "coral",
+    alpha              = 0.7,
+    anno_title         = "Score",
+    ylim               = c(0, 12),
+    panel_border_color = "grey50",
+    panel_border_width = 0.5,
+    width              = 0.15,
+    side               = "right"
+  ) %>%
+  add_row_text(
+    row_meta, aes(x = gene, y = 1, label = gene),
+    text_size          = 2,
+    text_fontface      = "italic",
+    color              = "grey30",
+    panel_border_color = "grey50",
+    panel_border_width = 0.5,
+    width              = 0.10,
+    side               = "right"
+  ) %>%
+  # --- TOP: tile + bar + line (side = "top") -----------------------------
+  add_col_tile(
+    col_meta, aes(x = sample, y = 1, fill = batch),
+    palette            = gc_cat_palette("lancet", 2),
+    anno_title         = "Batch",
+    panel_border_color = "grey50",
+    panel_border_width = 0.5,
+    height             = 0.03,
+    side               = "top"
+  ) %>%
+  add_col_bar(
+    col_meta, aes(x = sample, y = quality),
+    fill               = "#4DBBD5",
+    anno_title         = "Quality",
+    ylim               = c(70, 100),
+    panel_border_color = "grey50",
+    panel_border_width = 0.5,
+    height             = 0.12,
+    side               = "top"
+  ) %>%
+  add_col_line(
+    col_meta, aes(x = sample, y = quality),
+    color              = "darkred",
+    line_show_points   = TRUE,
+    line_point_size    = 1.5,
+    anno_title         = "QC Trend",
+    panel_border_color = "grey50",
+    panel_border_width = 0.5,
+    height             = 0.12,
+    side               = "top"
+  ) %>%
+  add_col_dot(
+    col_meta, aes(x = sample, y = quality, color = quality),
+    continuous_palette = c("green4", "orange"),
+    anno_title         = "QC Dot",
+    panel_border_color = "grey50",
+    panel_border_width = 0.5,
+    height             = 0.10,
+    side               = "top"
+  ) %>%
+  # --- BOTTOM: boxplot + violin + histogram + text (side = "bottom") -----
+  add_col_box(
+    expr_long_col, aes(x = sample, y = expr),
+    fill               = "lightyellow",
+    color              = "grey50",
+    anno_title         = "Expression",
+    panel_border_color = "grey50",
+    panel_border_width = 0.5,
+    height             = 0.15,
+    side               = "bottom"
+  ) %>%
+  add_col_violin(
+    expr_long_col, aes(x = sample, y = expr, fill = sample),
+    show_legend        = FALSE,
+    alpha              = 0.5,
+    anno_title         = "Violin",
+    panel_border_color = "grey50",
+    panel_border_width = 0.5,
+    height             = 0.15,
+    side               = "bottom"
+  ) %>%
+  add_col_histogram(
+    col_meta, aes(x = sample, y = quality),
+    fill               = "#00A087",
+    alpha              = 0.7,
+    anno_title         = "QC Hist",
+    ylim               = c(70, 100),
+    panel_border_color = "grey50",
+    panel_border_width = 0.5,
+    height             = 0.12,
+    side               = "bottom"
+  ) %>%
+  add_col_text(
+    col_meta, aes(x = sample, y = 1, label = sample),
+    text_size          = 2.5,
+    text_fontface      = "bold",
+    color              = "grey30",
+    panel_border_color = "grey50",
+    panel_border_width = 0.5,
+    height             = 0.04,
+    side               = "bottom"
+  ) %>%
+  set_title(
+    title    = "Full-Feature Composite Heatmap",
+    subtitle = "All 8 annotation types across all 4 sides: bar, tile, dot, violin, boxplot, line, histogram, text"
+  )
+
+final
+```
+
+
+# Alternative: Unified Interface `geom_add()`
+
+All the composite plots above can also be built with a single function —
+`geom_add()`. It wraps every `add_row_*()` / `add_col_*()` helper into one
+entry-point. Use whichever style you prefer; the result is identical.
+
+| Parameter | Description |
+|:---|:---|
+| `geom` | `"bar"`, `"tile"`, `"dot"`, `"boxplot"`, `"violin"`, `"line"`, `"text"`, `"histogram"`, or `"tree"` |
+| `side` | `"left"`, `"right"`, `"top"`, or `"bottom"` |
+| `data` | Annotation data frame (not needed for `"tree"`) |
+| `mapping` | `aes()` mapping (not needed for `"tree"`) |
+| `size` | Panel width (left/right) or height (top/bottom) |
+| `title` | Axis title for the panel |
+| `...` | All other params forwarded (e.g. `k`, `dist_method`, `text_size`, etc.) |
+
+## Basic usage
+
+```{r geom-add-basic, fig.height=8, fig.width=10}
+gg_heatmap(mat_z, fill_palette = gc_palette("RdBu")) %>%
+  geom_add("tree",  side = "left", k = 3, k_colors = gc_cat_palette("npg", 3)) %>%
+  geom_add("tree",  side = "top") %>%
+  geom_add("bar",   side = "right", data = row_meta,
+           mapping = aes(x = gene, y = score, fill = group),
+           palette = gc_cat_palette("jco", 3), title = "Score",
+           ylim = c(0, 12), size = 0.3) %>%
+  geom_add("tile",  side = "left", data = row_meta,
+           mapping = aes(x = gene, y = 1, fill = group),
+           palette = gc_cat_palette("lancet", 3), title = "Pathway",
+           size = 0.05) %>%
+  geom_add("dot",   side = "top", data = col_meta,
+           mapping = aes(x = sample, y = quality, color = quality),
+           continuous_palette = c("steelblue", "firebrick"),
+           title = "Quality", size = 0.12)
+```
+
+## Full composite with `geom_add()`
+
+The comprehensive example from the previous section, rewritten entirely
+with `geom_add()`:
+
+```{r geom-add-full, fig.width=14, fig.height=10}
+gg_heatmap(mat_z, fill_palette = gc_palette("RdBu"),
+           panel_border_color = "grey30") %>%
+  geom_add("tree", side = "left",
+           dist_method = "correlation", hclust_method = "ward.D2",
+           k = 3, k_colors = gc_cat_palette("npg", 3)) %>%
+  geom_add("tree", side = "top", k = 2) %>%
+  # --- left side ---
+  geom_add("tile", side = "left", data = row_meta,
+           mapping = aes(x = gene, y = 1, fill = group),
+           palette = gc_cat_palette("jco", 3), title = "Pathway",
+           size = 0.05) %>%
+  geom_add("violin", side = "left", data = expr_long_row,
+           mapping = aes(x = gene, y = expr, fill = gene),
+           show_legend = FALSE, alpha = 0.5, title = "Distr.",
+           size = 0.2) %>%
+  # --- right side ---
+  geom_add("bar", side = "right", data = row_meta,
+           mapping = aes(x = gene, y = score),
+           fill = "steelblue", title = "Score",
+           ylim = c(0, 12), size = 0.25) %>%
+  geom_add("dot", side = "right", data = row_meta,
+           mapping = aes(x = gene, y = pvalue, color = pvalue),
+           continuous_palette = c("grey80", "red3"),
+           title = "P-val", size = 0.15) %>%
+  geom_add("text", side = "right", data = row_meta,
+           mapping = aes(x = gene, y = 1, label = gene),
+           color = "grey30", size = 0.10,
+           text_size = 2, text_fontface = "italic") %>%
+  # --- top side ---
+  geom_add("tile", side = "top", data = col_meta,
+           mapping = aes(x = sample, y = 1, fill = batch),
+           palette = gc_cat_palette("lancet", 2), title = "Batch",
+           size = 0.03) %>%
+  geom_add("bar", side = "top", data = col_meta,
+           mapping = aes(x = sample, y = quality),
+           fill = "#4DBBD5", title = "Quality",
+           ylim = c(70, 100), size = 0.12) %>%
+  # --- bottom side ---
+  geom_add("boxplot", side = "bottom", data = expr_long_col,
+           mapping = aes(x = sample, y = expr),
+           fill = "lightyellow", color = "grey50",
+           title = "Expr.", size = 0.15) %>%
+  geom_add("line", side = "bottom", data = col_meta,
+           mapping = aes(x = sample, y = quality),
+           color = "darkred", title = "QC Trend",
+           line_show_points = TRUE, size = 0.12) %>%
+  geom_add("histogram", side = "bottom", data = col_meta,
+           mapping = aes(x = sample, y = quality),
+           fill = "#00A087", title = "QC Hist",
+           ylim = c(70, 100), size = 0.10)
+```
+
+
+# Session Info
+
+```{r session}
+sessionInfo()
+```
