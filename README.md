@@ -137,7 +137,42 @@ Supports all `stats::dist()` methods plus `"correlation"`, `"spearman"`, `"kenda
 | `add_row_text()` | `add_col_text()` | Text labels |
 | `add_row_histogram()` | `add_col_histogram()` | Histogram |
 
-Or use the unified interface `geom_add()` to attach any annotation type to any side with a single function.
+### `geom_add()` — Unified Interface
+
+Instead of remembering 16+ individual `add_row_*` / `add_col_*` functions, you can use the single entry-point `geom_add()` to attach **any** annotation or dendrogram to **any** side:
+
+```r
+geom_add(obj, geom, side, data, mapping, ...)
+```
+
+| Argument | Description |
+|:---|:---|
+| `geom` | `"bar"`, `"tile"`, `"dot"`, `"boxplot"`, `"violin"`, `"line"`, `"text"`, `"histogram"`, or `"tree"` |
+| `side` | `"left"`, `"right"`, `"top"`, or `"bottom"` |
+| `data` | A data frame (ignored for `"tree"`) |
+| `mapping` | `aes()` mapping (ignored for `"tree"`) |
+| `...` | Passed to the underlying `add_*` function (e.g. `k`, `fill`, `palette`, `show_legend`, `title`, etc.) |
+
+**Example — build a full composite figure with `geom_add()` only:**
+
+```r
+mat <- matrix(rnorm(100), 10, 10,
+              dimnames = list(paste0("G", 1:10), paste0("S", 1:10)))
+meta_r <- data.frame(gene = rownames(mat), score = runif(10))
+meta_c <- data.frame(sample = colnames(mat), quality = runif(10, 70, 100))
+
+gg_heatmap(mat) %>%
+  geom_add("tree", side = "left", k = 3) %>%
+  geom_add("tree", side = "top") %>%
+  geom_add("bar", side = "right", data = meta_r,
+           mapping = aes(x = gene, y = score),
+           fill = "steelblue") %>%
+  geom_add("dot", side = "top", data = meta_c,
+           mapping = aes(x = sample, y = quality),
+           color = "red")
+```
+
+`geom_add()` internally dispatches to the correct `add_row_*` or `add_col_*` function based on `geom` and `side`, so you get the same result with less mental overhead.
 
 ## Circular-Specific
 
