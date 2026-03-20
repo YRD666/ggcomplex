@@ -43,6 +43,7 @@ The core workflow follows an **Anchor + Satellites** pattern:
 ```{r load}
 library(ggcomplex)
 library(ggplot2)
+library(ggnewscale)   # optional: enables legends for circular ring annotations
 ```
 
 
@@ -805,6 +806,16 @@ around the circle (angular axis) and rows form concentric rings (radial axis).
 This layout is especially useful for large sample panels or when presenting
 data in a visually compact way.
 
+> **Tip:** Install the optional
+> [`ggnewscale`](https://CRAN.R-project.org/package=ggnewscale) package to
+> enable automatic legend generation for annotation rings (`add_outer_ring()`
+> with `palette` or `continuous_palette`). Without it, ring colours are still
+> drawn but legends are suppressed.
+>
+> ```r
+> install.packages("ggnewscale")
+> ```
+
 ## `gg_circular()` --- Basic Circular Heatmap
 
 ```{r circ-basic, fig.width=8, fig.height=8}
@@ -886,6 +897,13 @@ gg_circular(circ_mat,
 
 Annotation rings are added concentrically **outside** the heatmap. Four geom
 types are supported: `"tile"`, `"bar"`, `"point"`, and `"text"`.
+
+When `ggnewscale` is installed, tile and histogram rings with `palette` or
+`continuous_palette` will **automatically generate legends** in the plot,
+making it easy to identify what each colour ring represents. Column/row labels
+and sector names are rendered **horizontally** for better readability,
+regardless of their angular position. Dynamic label offsets prevent overlap
+between outer ring annotations and labels.
 
 ### Tile ring (discrete groups)
 
@@ -987,7 +1005,8 @@ gg_circular(circ_mat,
 
 `col_split` divides columns into named groups shown as separate angular
 sectors, separated by `split_gap` x-units. An inner ring automatically
-displays group labels. Combined with `heatmap_border_color` this produces
+displays group labels **horizontally** (always readable, regardless of
+angular position). Combined with `heatmap_border_color` this produces
 the classic split circular heatmap look.
 
 | Parameter | Description |
@@ -1190,6 +1209,10 @@ A production-quality figure combining **all** circular features:
 column split (4 sectors), gap opening, row & column dendrograms, inner
 correlation links, heatmap borders, row labels, and **all 6 outer ring
 types** (tile, bar, point, line, histogram, text).
+
+With `ggnewscale` installed, this example will display legends for the
+discrete tile ring ("Group") and the continuous tile ring ("P-value"),
+as well as the histogram ring ("Mean Expr").
 
 ```{r circ-comprehensive-data}
 circ_label_meta <- data.frame(
