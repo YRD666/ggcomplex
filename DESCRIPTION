@@ -34,7 +34,8 @@ Suggests:
     testthat (>= 3.0.0),
     knitr,
     rmarkdown,
-    gridExtra
+    gridExtra,
+    ggnewscale
 Config/testthat/edition: 3
 VignetteBuilder: knitr
 biocViews: Visualization, Clustering, Transcriptomics, GeneExpression,

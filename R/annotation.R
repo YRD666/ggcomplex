@@ -74,6 +74,7 @@ add_row_annotation <- function(obj,
                                panel_border_width = 0.5,
                                gap               = NULL,
                                extra_layers      = list(),
+                               keep_axis         = FALSE,
                                ...) {
   if (!is_ggcomplex(obj)) rlang::abort("`obj` must be a <ggcomplex> object.")
   geom <- match.arg(geom)
@@ -121,7 +122,8 @@ add_row_annotation <- function(obj,
                           extra_layers, discrete_axis = "y",
                           anno_title = anno_title,
                           panel_border_color = panel_border_color,
-                          panel_border_width = panel_border_width)
+                          panel_border_width = panel_border_width,
+                          keep_axis = keep_axis)
 
   sp <- gap %||% obj$params$panel_spacing %||% 2
   if (sp > 0) {
@@ -183,6 +185,7 @@ add_col_annotation <- function(obj,
                                panel_border_width = 0.5,
                                gap               = NULL,
                                extra_layers      = list(),
+                               keep_axis         = FALSE,
                                ...) {
   if (!is_ggcomplex(obj)) rlang::abort("`obj` must be a <ggcomplex> object.")
   geom <- match.arg(geom)
@@ -228,7 +231,8 @@ add_col_annotation <- function(obj,
                           extra_layers, discrete_axis = "x",
                           anno_title = anno_title,
                           panel_border_color = panel_border_color,
-                          panel_border_width = panel_border_width)
+                          panel_border_width = panel_border_width,
+                          keep_axis = keep_axis)
 
   sp <- gap %||% obj$params$panel_spacing %||% 2
   if (sp > 0) {
@@ -280,7 +284,8 @@ apply_anno_styling <- function(p, palette, continuous_palette, show_legend,
                                extra_layers, discrete_axis = "x",
                                anno_title = NULL,
                                panel_border_color = NA,
-                               panel_border_width = 0.5) {
+                               panel_border_width = 0.5,
+                               keep_axis = FALSE) {
   mapped_aes <- names(p$mapping)
 
   if (!is.null(continuous_palette)) {
@@ -313,22 +318,35 @@ apply_anno_styling <- function(p, palette, continuous_palette, show_legend,
     if ("colour" %in% mapped_aes) p <- p + ggplot2::scale_color_manual(values = palette)
   }
 
-  if (discrete_axis == "x") {
-    p <- p + ggplot2::scale_x_discrete(expand = c(0, 0))
-  } else {
-    p <- p + ggplot2::scale_y_discrete(expand = c(0, 0))
-  }
+  # The discrete variable is always mapped to x in the aes (even with coord_flip)
+  p <- p + ggplot2::scale_x_discrete(expand = c(0, 0))
 
   for (layer in extra_layers) p <- p + layer
 
-  p <- p + theme_clean_side(keep_legend = show_legend)
+  # Determine which axis carries continuous values (needs tick labels)
+  axis_side <- if (discrete_axis == "y") "x" else "y"
+  p <- p + theme_clean_side(keep_legend = show_legend,
+                             keep_axis = keep_axis, axis_side = axis_side)
+
+  # For column annotations (top/bottom), place the y-axis on the RIGHT side
+  # so it doesn't compete with the main heatmap's row names on the left.
+  # Suppress the axis title to avoid adding right margin that would push
+  # right-side annotations away from the main heatmap.
+  if (keep_axis && discrete_axis == "x") {
+    p <- p + ggplot2::scale_y_continuous(position = "right") +
+      ggplot2::theme(axis.title.y = ggplot2::element_blank())
+  }
 
   if (!is.null(anno_title)) {
     if (discrete_axis == "x") {
-      p <- p + ggplot2::ylab(anno_title) +
-        ggplot2::theme(
-          axis.title.y = ggplot2::element_text(size = 8, angle = 90)
-        )
+      # Don't use ylab for column annotations with keep_axis — it adds margin.
+      # Without keep_axis, use standard ylab.
+      if (!keep_axis) {
+        p <- p + ggplot2::ylab(anno_title) +
+          ggplot2::theme(
+            axis.title.y = ggplot2::element_text(size = 8, angle = 90)
+          )
+      }
     } else {
       p <- p + ggplot2::xlab(anno_title) +
         ggplot2::theme(

@@ -12,7 +12,8 @@
 #'
 #' @return A [ggplot2::theme] object.
 #' @export
-theme_clean_side <- function(base_size = 8, keep_legend = TRUE) {
+theme_clean_side <- function(base_size = 8, keep_legend = TRUE,
+                             keep_axis = FALSE, axis_side = "x") {
   th <- ggplot2::theme_void(base_size = base_size) +
     ggplot2::theme(
       plot.margin  = ggplot2::margin(0, 0, 0, 0),
@@ -21,6 +22,26 @@ theme_clean_side <- function(base_size = 8, keep_legend = TRUE) {
       axis.ticks   = ggplot2::element_blank(),
       panel.grid   = ggplot2::element_blank()
     )
+
+  if (keep_axis) {
+    if ("x" %in% axis_side) {
+      th <- th + ggplot2::theme(
+        axis.text.x  = ggplot2::element_text(size = base_size - 1,
+                                                angle = 45, hjust = 1, vjust = 1),
+        axis.ticks.x = ggplot2::element_line(),
+        axis.ticks.length.x = ggplot2::unit(1.5, "pt")
+      )
+    }
+    if ("y" %in% axis_side) {
+      th <- th + ggplot2::theme(
+        axis.text.y         = ggplot2::element_text(size = base_size - 1),
+        axis.text.y.right   = ggplot2::element_text(size = base_size - 1,
+                                                     margin = ggplot2::margin(l = 1)),
+        axis.ticks.y        = ggplot2::element_line(),
+        axis.ticks.length.y = ggplot2::unit(1.5, "pt")
+      )
+    }
+  }
 
   if (!keep_legend) {
     th <- th + ggplot2::theme(legend.position = "none")

@@ -522,11 +522,12 @@ rebuild_circular_plot <- function(obj) {
     for (s in sector_info) {
       if (is.null(s$name)) next
       lx <- (s$x_start + s$x_end) / 2
-      ta <- polar_text_angles(lx, x_lim, polar_start, dir)
+      # Sector labels should always be horizontal (angle = 0) for
+      # readability, not radial like outer column labels.
       p <- p + ggplot2::annotate(
         "text", x = lx, y = (label_r + label_ri) / 2,
         label = s$name, size = 4, fontface = "bold",
-        angle = ta$angle, hjust = 0.5
+        angle = 0, hjust = 0.5
       )
       if (!is.na(border_col %||% NA)) {
         x_lo <- s$x_start - 0.5; x_hi <- s$x_end + 0.5
@@ -559,13 +560,16 @@ rebuild_circular_plot <- function(obj) {
     outer_r <- last$y_center + last$height / 2
   }
 
+  # Dynamic label offset: scale with plot radius to avoid overlap
+  label_offset <- max(1.2, outer_r * 0.08)
+
   # -----------------------------------------------------------------
   # 11. Column labels
   # -----------------------------------------------------------------
   if (params$show_col_labels %||% TRUE) {
     col_x <- x_map[col_lvls]
     col_df <- data.frame(
-      col_num = unname(col_x), label = col_lvls, y = outer_r + 0.8
+      col_num = unname(col_x), label = col_lvls, y = outer_r + label_offset
     )
     ta <- polar_text_angles(col_df$col_num, x_lim, polar_start, dir)
     col_df$angle <- ta$angle; col_df$hjust <- ta$hjust
@@ -578,10 +582,15 @@ rebuild_circular_plot <- function(obj) {
   }
 
   # -----------------------------------------------------------------
-  # 12. Row labels (gap area) — tangential, text extends into the gap
+  # 12. Row labels (gap area) — only in heatmap radial range
   # -----------------------------------------------------------------
   if (params$show_row_labels %||% FALSE) {
-    label_x <- if (gap_deg > 0) total_data_x + 0.5 + 0.1 else 0.8
+    # Place row labels at left edge of gap
+    if (gap_deg > 0) {
+      label_x <- total_data_x + 0.5 + 0.1
+    } else {
+      label_x <- 0.8
+    }
     row_df <- data.frame(
       row_num = inner_r + (seq_len(nr) - 1) * th + th / 2,
       label   = levels(tidy$row_id)[seq_len(nr)],
@@ -603,24 +612,35 @@ rebuild_circular_plot <- function(obj) {
   }
 
   # -----------------------------------------------------------------
-  # 13. Ring labels
+  # 13. Ring labels — in gap area, offset from row labels
   # -----------------------------------------------------------------
-  for (ring in params$rings) {
-    if (!is.null(ring$ring_label)) {
-      ta_rl <- polar_text_angles(gap_center_x, x_lim, polar_start, dir)
-      p <- p + ggplot2::annotate(
-        "text", x = gap_center_x, y = ring$y_center,
-        label = ring$ring_label, size = 2.5,
-        angle = ta_rl$angle, hjust = 0.5, fontface = "bold"
-      )
+  if (gap_deg > 0) {
+    # Place ring labels at the right side of the gap to avoid
+    # overlapping with row labels on the left side
+    gap_x_start <- total_data_x + 0.5
+    gap_x_end   <- total_x + 0.5
+    ring_label_x <- gap_x_end - (gap_x_end - gap_x_start) * 0.2
+    for (ring in params$rings) {
+      if (!is.null(ring$ring_label)) {
+        ta_rl <- polar_text_angles(ring_label_x, x_lim, polar_start, dir)
+        p <- p + ggplot2::annotate(
+          "text", x = ring_label_x, y = ring$y_center,
+          label = ring$ring_label, size = 2.5,
+          angle = ta_rl$angle, hjust = 0.5, fontface = "bold"
+        )
+      }
     }
   }
 
   # -----------------------------------------------------------------
   # 14. Polar transform + theme
   # -----------------------------------------------------------------
-  label_margin <- if (params$show_col_labels %||% TRUE) 2.0 else 0.5
-  y_upper <- outer_r + 0.8 + label_margin
+  label_margin <- if (params$show_col_labels %||% TRUE) {
+    max(2.0, label_offset + 1.0)
+  } else {
+    0.5
+  }
+  y_upper <- outer_r + label_offset + label_margin
   p <- p +
     ggplot2::coord_polar(theta = "x", start = polar_start, direction = dir) +
     ggplot2::scale_x_continuous(limits = x_lim, breaks = NULL) +
@@ -669,15 +689,70 @@ build_ring_layer <- function(p, ring, obj) {
   yc <- ring$y_center; hh <- ring$height
 
   if (ring$type == "tile") {
-    colors <- resolve_ring_colors(rdata, ring)
-    p <- p + ggplot2::annotate(
-      "rect",
-      xmin = rdata$col_num - 0.5, xmax = rdata$col_num + 0.5,
-      ymin = yc - hh / 2, ymax = yc + hh / 2,
-      fill = colors,
-      color = ring$border_color %||% "white",
-      linewidth = ring$border_width %||% 0.3
-    )
+    fvar <- ring$fill_var
+    has_legend <- !is.null(fvar) && (!is.null(ring$palette) ||
+                                      !is.null(ring$continuous_palette))
+    if (has_legend && requireNamespace("ggnewscale", quietly = TRUE)) {
+      # Use mapped aesthetics so legend is generated
+      rect_df <- data.frame(
+        xmin = rdata$col_num - 0.5, xmax = rdata$col_num + 0.5,
+        ymin = yc - hh / 2, ymax = yc + hh / 2,
+        fill_val = rdata[[fvar]]
+      )
+      p <- p + ggnewscale::new_scale_fill()
+      if (!is.null(ring$palette)) {
+        rect_df$fill_val <- factor(rect_df$fill_val,
+                                    levels = names(ring$palette))
+        p <- p +
+          ggplot2::geom_rect(
+            data = rect_df,
+            ggplot2::aes(xmin = .data$xmin, xmax = .data$xmax,
+                         ymin = .data$ymin, ymax = .data$ymax,
+                         fill = .data$fill_val),
+            color = ring$border_color %||% "white",
+            linewidth = ring$border_width %||% 0.3,
+            inherit.aes = FALSE
+          ) +
+          ggplot2::scale_fill_manual(
+            values = ring$palette,
+            name = ring$ring_label %||% fvar
+          )
+      } else {
+        p <- p +
+          ggplot2::geom_rect(
+            data = rect_df,
+            ggplot2::aes(xmin = .data$xmin, xmax = .data$xmax,
+                         ymin = .data$ymin, ymax = .data$ymax,
+                         fill = .data$fill_val),
+            color = ring$border_color %||% "white",
+            linewidth = ring$border_width %||% 0.3,
+            inherit.aes = FALSE
+          )
+        cp <- ring$continuous_palette
+        if (length(cp) == 2) {
+          p <- p + ggplot2::scale_fill_gradient(
+            low = cp[1], high = cp[2],
+            name = ring$ring_label %||% fvar
+          )
+        } else {
+          p <- p + ggplot2::scale_fill_gradient2(
+            low = cp[1], mid = cp[2], high = cp[3],
+            name = ring$ring_label %||% fvar
+          )
+        }
+      }
+    } else {
+      # Fallback: annotate (no legend)
+      colors <- resolve_ring_colors(rdata, ring)
+      p <- p + ggplot2::annotate(
+        "rect",
+        xmin = rdata$col_num - 0.5, xmax = rdata$col_num + 0.5,
+        ymin = yc - hh / 2, ymax = yc + hh / 2,
+        fill = colors,
+        color = ring$border_color %||% "white",
+        linewidth = ring$border_width %||% 0.3
+      )
+    }
   } else if (ring$type == "bar") {
     vvar <- ring$value_var %||% ring$fill_var
     bar_fill <- ring$fill %||% "steelblue"
@@ -738,14 +813,67 @@ build_ring_layer <- function(p, ring, obj) {
     vals <- rdata[[vvar]]
     mx <- max(abs(vals), na.rm = TRUE); if (mx == 0) mx <- 1
     bh <- (vals / mx) * hh; bb <- yc - hh / 2
-    colors <- resolve_ring_colors(rdata, ring)
-    p <- p + ggplot2::annotate(
-      "rect",
-      xmin = rdata$col_num - 0.45, xmax = rdata$col_num + 0.45,
-      ymin = bb, ymax = bb + bh, fill = colors,
-      color = ring$border_color %||% "white",
-      linewidth = ring$border_width %||% 0.2
-    )
+    fvar <- ring$fill_var
+    has_legend <- !is.null(fvar) && (!is.null(ring$palette) ||
+                                      !is.null(ring$continuous_palette))
+    if (has_legend && requireNamespace("ggnewscale", quietly = TRUE)) {
+      rect_df <- data.frame(
+        xmin = rdata$col_num - 0.45, xmax = rdata$col_num + 0.45,
+        ymin = bb, ymax = bb + bh,
+        fill_val = rdata[[fvar]]
+      )
+      p <- p + ggnewscale::new_scale_fill()
+      if (!is.null(ring$palette)) {
+        rect_df$fill_val <- factor(rect_df$fill_val,
+                                    levels = names(ring$palette))
+        p <- p +
+          ggplot2::geom_rect(
+            data = rect_df,
+            ggplot2::aes(xmin = .data$xmin, xmax = .data$xmax,
+                         ymin = .data$ymin, ymax = .data$ymax,
+                         fill = .data$fill_val),
+            color = ring$border_color %||% "white",
+            linewidth = ring$border_width %||% 0.2,
+            inherit.aes = FALSE
+          ) +
+          ggplot2::scale_fill_manual(
+            values = ring$palette,
+            name = ring$ring_label %||% fvar
+          )
+      } else {
+        cp <- ring$continuous_palette
+        p <- p +
+          ggplot2::geom_rect(
+            data = rect_df,
+            ggplot2::aes(xmin = .data$xmin, xmax = .data$xmax,
+                         ymin = .data$ymin, ymax = .data$ymax,
+                         fill = .data$fill_val),
+            color = ring$border_color %||% "white",
+            linewidth = ring$border_width %||% 0.2,
+            inherit.aes = FALSE
+          )
+        if (length(cp) == 2) {
+          p <- p + ggplot2::scale_fill_gradient(
+            low = cp[1], high = cp[2],
+            name = ring$ring_label %||% fvar
+          )
+        } else {
+          p <- p + ggplot2::scale_fill_gradient2(
+            low = cp[1], mid = cp[2], high = cp[3],
+            name = ring$ring_label %||% fvar
+          )
+        }
+      }
+    } else {
+      colors <- resolve_ring_colors(rdata, ring)
+      p <- p + ggplot2::annotate(
+        "rect",
+        xmin = rdata$col_num - 0.45, xmax = rdata$col_num + 0.45,
+        ymin = bb, ymax = bb + bh, fill = colors,
+        color = ring$border_color %||% "white",
+        linewidth = ring$border_width %||% 0.2
+      )
+    }
   }
   p
 }
